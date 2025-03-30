@@ -10,16 +10,23 @@ direnv() {
 }
 
 env_setup() {
+  unset ASDF_DIRENV_{BIN,IGNORE_MISSING_PLUGINS,NO_TOUCH_RC_FILE}
+
   ASDF_CMD="$(type -P asdf)"
   test -x "$ASDF_CMD" || die "Expected asdf command to be available."
-  ASDF_ROOT="${ASDF_DIR:-"$(dirname "$(dirname "$ASDF_CMD")")"}"
 
   ASDF_DIRENV="$(dirname "$BATS_TEST_DIRNAME")"
 
-  ASDF_WHERE_DIRENV="$(asdf where direnv)"
-  test -n "$ASDF_WHERE_DIRENV" || die "Expected asdf-direnv plugin to be already installed."
+  ASDF_WHERE_DIRENV="$ASDF_DATA_DIR/plugins/direnv"
+  test -d "$ASDF_WHERE_DIRENV" || die "Expected asdf-direnv plugin to be already installed."
 
-  ASDF_DIRENV_VERSION="$(basename "$ASDF_WHERE_DIRENV")"
+  if `asdf where direnv 2>/dev/null`; then
+    ASDF_WHICH_DIRENV="$(asdf which direnv)"
+  else
+    ASDF_WHICH_DIRENV="$(ASDF_DIRENV_VERSION=system asdf which direnv)"
+  fi
+
+  ASDF_DIRENV_VERSION="$("$ASDF_WHICH_DIRENV" version)"
   PATH_WITHOUT_ASDF="$(echo "$PATH" | tr ':' $'\n' | grep -v asdf | tr $'\n' ':' | sed -e 's#:$##')"
 
   BASE_DIR=$(mktemp -dt asdf.XXXX)
@@ -32,7 +39,7 @@ env_setup() {
 
   # A temporary "system" direnv binary outside of asdf.
   DIRENV_SYS=$(mktemp -dt direnv.XXXX)
-  ln -s "$ASDF_WHERE_DIRENV/bin/direnv" "$DIRENV_SYS/direnv"
+  ln -s "$ASDF_WHICH_DIRENV" "$DIRENV_SYS/direnv"
 
   # NOTE: dont add asdf shims directory to PATH
   # NOTE: we add direnv to PATH for testing system-installed direnv setup.
@@ -40,20 +47,19 @@ env_setup() {
 
   mkdir -p "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME"
 
-  mkdir -p "${ASDF_DIR}"/{bin,lib}
+  mkdir -p "${ASDF_DIR}"/bin
   mkdir -p "${ASDF_DATA_DIR}"/{plugins,installs,shims}
   cp "$ASDF_CMD" "${ASDF_DIR}/bin"
-  cp -r "$ASDF_ROOT"/lib/* "${ASDF_DIR}/lib"
 
   ln -s "$ASDF_DIRENV" "${ASDF_DATA_DIR}/plugins/direnv"
-  mkdir -p "${ASDF_DATA_DIR}/installs/direnv"
-  ln -s "$ASDF_WHERE_DIRENV" "${ASDF_DATA_DIR}/installs/direnv/$ASDF_DIRENV_VERSION"
+  mkdir -p "${ASDF_DATA_DIR}/installs/direnv/${ASDF_DIRENV_VERSION}/bin"
+  ln -s "$ASDF_WHICH_DIRENV" "${ASDF_DATA_DIR}/installs/direnv/$ASDF_DIRENV_VERSION/bin/direnv"
 
   echo "direnv $ASDF_DIRENV_VERSION" >"$HOME/.tool-versions"
   asdf reshim direnv "$ASDF_DIRENV_VERSION"
 
-  ASDF_DIRENV_BIN="$ASDF_WHERE_DIRENV/bin/direnv" # uses ASDF_DIRENV_VERSION from env.
-  test -x "$ASDF_DIRENV_BIN"                      # make sure it's executable
+  ASDF_DIRENV_BIN="$ASDF_WHICH_DIRENV" # uses ASDF_DIRENV_VERSION from env.
+  test -x "$ASDF_DIRENV_BIN"           # make sure it's executable
 
   PROJECT_DIR=$HOME/project
   mkdir -p "$PROJECT_DIR"
